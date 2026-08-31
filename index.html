@@ -518,7 +518,7 @@
         let anyOk = false;
         for(const c of CATS){
           try{
-            const url = `${PROXY_URL}/search?what=${encodeURIComponent(c.query)}&where=Madrid`;
+            const url = `${PROXY_URL}/search?what=${encodeURIComponent(c.query)}&where=Madrid&label=${encodeURIComponent(c.label)}`;
             const res = await fetch(url);
             const data = await res.json();
             if(res.ok){
@@ -549,7 +549,7 @@
           title: job.title || '',
           company: job.company || '',
           loc: job.location || '',
-          desc: '',
+          desc: job.desc || '',
           link: job.link || '',
           chips,
           dateAdded: new Date().toISOString().slice(0, 10),
@@ -635,6 +635,7 @@
                           <div className="card-main">
                             <div className="card-title">{job.title}</div>
                             <div className="card-company"><b>{job.company}</b>{job.location ? ` · ${job.location}` : ''}</div>
+                            {job.desc && <div className="card-desc">{job.desc}</div>}
                           </div>
                           <div className="card-cta">
                             <a href={job.link} target="_blank" rel="noopener">לצפייה ←</a>
@@ -719,7 +720,7 @@
           )}
 
           <div className="foot">
-            <b>מה זה ומה לא:</b> כפתור <b>"חפש משרות חדשות"</b> מריץ חיפוש חי מול Adzuna (דרך פרוקסי פרטי) ומציג תוצאות טריות — אתם בוחרים מה להוסיף לרשימה. תוצאות מהחיפוש אינן מתורגמות/מסוננות אוטומטית, אז כדאי לבדוק כל משרה לפני הוספה. הרשימה עצמה נשמרת ב-Firebase; קישורים חיצוניים עלולים לפוג עם הזמן.
+            <b>מה זה ומה לא:</b> כפתור <b>"חפש משרות חדשות"</b> מריץ חיפוש חי מול Adzuna דרך פרוקסי פרטי, שגם מסנן רעש ומוסיף תיאור עברי קצר לכל משרה רלוונטית באמצעות Claude — אתם עדיין בוחרים מה להוסיף לרשימה. אם התיאור בעברית לא מופיע, זה סימן שהסינון החכם זמנית לא פעיל (עדיין מוצגות תוצאות גולמיות מ-Adzuna). הרשימה עצמה נשמרת ב-Firebase; קישורים חיצוניים עלולים לפוג עם הזמן.
           </div>
         </div>
       );
