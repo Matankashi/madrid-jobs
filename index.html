@@ -239,6 +239,17 @@
     color: var(--gold-dim); background: var(--gold-soft); border:1px solid var(--gold-soft);
     border-radius:999px; padding:6px 12px; cursor:pointer;
   }
+  .updated-row .btn-row{ display:flex; gap:8px; }
+  .search-btn{
+    font-family:'IBM Plex Mono', monospace; font-size:11px; font-weight:600;
+    color: var(--ink-dim); background: var(--ink-soft); border:1px solid var(--ink-soft);
+    border-radius:999px; padding:6px 12px; cursor:pointer;
+  }
+  .search-btn:disabled{ opacity:0.6; cursor:default; }
+  .search-error{
+    font-size:12.5px; color: var(--danger); background: var(--danger-soft);
+    border-radius:8px; padding:10px 12px; margin-bottom:14px;
+  }
 
   /* ---------- sections ---------- */
   section.group{ margin-bottom: 34px; }
@@ -333,6 +344,24 @@
     padding:5px 12px; cursor:pointer; white-space:nowrap;
   }
 
+  /* ---------- found results (live search) ---------- */
+  .found-section .group-head{ border-bottom-color: var(--ink-soft); }
+  .found-card{
+    background: var(--surface); border:1px dashed var(--ink); border-radius:12px;
+    padding:14px 16px; display:grid; grid-template-columns: 1fr auto; gap:12px 16px; align-items:center;
+  }
+  .found-card .card-title{ font-size:15px; }
+  .add-found-btn{
+    font-family:'IBM Plex Mono', monospace; font-size:11px; font-weight:600;
+    color: var(--ink-dim); background: var(--ink-soft); border:1px solid var(--ink-soft);
+    border-radius:999px; padding:7px 13px; cursor:pointer; white-space:nowrap;
+  }
+  .add-found-btn:disabled{ opacity:0.55; cursor:default; }
+  .found-select{
+    background: var(--surface-2); border:1px solid var(--border); border-radius:8px;
+    padding:5px 8px; font-size:11.5px; color: var(--text); margin-inline-end:6px;
+  }
+
   /* ---------- add form ---------- */
   .add-form-section .group-head{ border-bottom-color: var(--gold-soft); }
   .add-form{
@@ -375,12 +404,13 @@
     const { useState, useEffect } = React;
     const db = firebase.database();
     const ROOT = "madridJobs";
+    const PROXY_URL = "https://madrid-jobs-proxy.matankashi.workers.dev";
 
     const CATS = [
-      { key:'it',   tag:'it',   tagLabel:'IT',      label:'תפקידי טכנולוגיה' },
-      { key:'dog',  tag:'dog',  tagLabel:'אילוף',   label:'אילוף כלבים' },
-      { key:'food', tag:'food', tagLabel:'בריסטה',  label:'קפה ובריסטה' },
-      { key:'sec',  tag:'sec',  tagLabel:'אבטחה',   label:'אבטחה' },
+      { key:'it',   tag:'it',   tagLabel:'IT',      label:'תפקידי טכנולוגיה', query:'software' },
+      { key:'dog',  tag:'dog',  tagLabel:'אילוף',   label:'אילוף כלבים',      query:'adiestrador canino' },
+      { key:'food', tag:'food', tagLabel:'בריסטה',  label:'קפה ובריסטה',      query:'barista' },
+      { key:'sec',  tag:'sec',  tagLabel:'אבטחה',   label:'אבטחה',            query:'vigilante seguridad' },
     ];
 
     function emptyForm(){
@@ -438,6 +468,10 @@
       const [editMode, setEditMode] = useState(false);
       const [form, setForm] = useState(emptyForm());
       const [saving, setSaving] = useState(false);
+      const [searching, setSearching] = useState(false);
+      const [searchError, setSearchError] = useState('');
+      const [searchResults, setSearchResults] = useState(null);
+      const [addingKey, setAddingKey] = useState(null);
 
       useEffect(() => {
         const ref = db.ref(ROOT);
@@ -477,6 +511,53 @@
         db.ref(`${ROOT}/listings/${id}`).remove().then(touchUpdated);
       }
 
+      async function runSearch(){
+        setSearching(true);
+        setSearchError('');
+        setSearchResults(null);
+        try{
+          const perCategory = await Promise.all(CATS.map(async c => {
+            const url = `${PROXY_URL}/search?what=${encodeURIComponent(c.query)}&where=Madrid`;
+            const res = await fetch(url);
+            if(!res.ok) throw new Error('search_failed');
+            const data = await res.json();
+            return { key: c.key, jobs: (data.results || []).slice(0, 6) };
+          }));
+          const byCat = {};
+          perCategory.forEach(p => { byCat[p.key] = p.jobs; });
+          setSearchResults(byCat);
+        } catch(err){
+          setSearchError('החיפוש נכשל. נסו שוב בעוד רגע.');
+        } finally {
+          setSearching(false);
+        }
+      }
+
+      function addFoundJob(catKey, job){
+        const jobKey = catKey + job.id;
+        setAddingKey(jobKey);
+        const chips = [];
+        if(job.salary_min) chips.push(`שכר: ${Math.round(job.salary_min).toLocaleString()}–${Math.round(job.salary_max || job.salary_min).toLocaleString()}€`);
+        db.ref(`${ROOT}/listings`).push({
+          category: catKey,
+          title: job.title || '',
+          company: job.company || '',
+          loc: job.location || '',
+          desc: '',
+          link: job.link || '',
+          chips,
+          dateAdded: new Date().toISOString().slice(0, 10),
+        }).then(() => {
+          touchUpdated();
+          setSearchResults(prev => {
+            if(!prev) return prev;
+            const next = { ...prev };
+            next[catKey] = next[catKey].filter(j => j.id !== job.id);
+            return next;
+          });
+        }).finally(() => setAddingKey(null));
+      }
+
       if(listings === null){
         return <div className="loading" dir="rtl" lang="he">טוען משרות…</div>;
       }
@@ -512,11 +593,58 @@
             </div>
             <div className="updated-row">
               <span>עודכן לאחרונה: <b>{lastUpdatedLabel}</b></span>
-              <button className="edit-toggle" onClick={() => setEditMode(v => !v)}>
-                {editMode ? 'סיום עריכה' : '✎ מצב עריכה'}
-              </button>
+              <div className="btn-row">
+                <button className="search-btn" onClick={runSearch} disabled={searching}>
+                  {searching ? 'מחפש…' : '🔍 חפש משרות חדשות'}
+                </button>
+                <button className="edit-toggle" onClick={() => setEditMode(v => !v)}>
+                  {editMode ? 'סיום עריכה' : '✎ מצב עריכה'}
+                </button>
+              </div>
             </div>
           </div>
+
+          {searchError && <div className="search-error">{searchError}</div>}
+
+          {searchResults && (
+            <section className="group found-section">
+              <div className="group-head">
+                <span className="tag it">חדש</span>
+                <h2>נמצאו ברשת</h2>
+                <span className="count">חיפוש חי דרך Adzuna</span>
+              </div>
+              {CATS.map(c => {
+                const existingLinks = new Set(listArr.map(j => j.link));
+                const jobs = (searchResults[c.key] || []).filter(j => !existingLinks.has(j.link));
+                if(jobs.length === 0) return null;
+                return (
+                  <div key={c.key} style={{ marginBottom: 16 }}>
+                    <div className="group-head" style={{ marginBottom: 8, paddingBottom: 4 }}>
+                      <span className={`tag ${c.tag}`}>{c.tagLabel}</span>
+                      <h2 style={{ fontSize: 15 }}>{c.label}</h2>
+                    </div>
+                    <div className="cards">
+                      {jobs.map(job => (
+                        <div className="found-card" key={job.id}>
+                          <div className="card-main">
+                            <div className="card-title">{job.title}</div>
+                            <div className="card-company"><b>{job.company}</b>{job.location ? ` · ${job.location}` : ''}</div>
+                          </div>
+                          <div className="card-cta">
+                            <a href={job.link} target="_blank" rel="noopener">לצפייה ←</a>
+                            <button className="add-found-btn" disabled={addingKey === c.key + job.id}
+                                    onClick={() => addFoundJob(c.key, job)}>
+                              {addingKey === c.key + job.id ? 'מוסיף…' : '+ הוספה לרשימה'}
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </section>
+          )}
 
           {grouped.map(g => (
             <section className="group" key={g.key}>
@@ -585,7 +713,7 @@
           )}
 
           <div className="foot">
-            <b>מה זה ומה לא:</b> הרשימה נשמרת ב-Firebase ומתעדכנת ידנית — אין סריקה אוטומטית של האינטרנט. כשמבקשים ממני <b>"חפש משרות חדשות"</b> אני מחפש ברשת ומוסיף תוצאות דרך מצב העריכה, ואז תאריך "עודכן לאחרונה" מתעדכן אוטומטית. קישורים חיצוניים (בעיקר מ-Indeed) עלולים לפוג עם הזמן.
+            <b>מה זה ומה לא:</b> כפתור <b>"חפש משרות חדשות"</b> מריץ חיפוש חי מול Adzuna (דרך פרוקסי פרטי) ומציג תוצאות טריות — אתם בוחרים מה להוסיף לרשימה. תוצאות מהחיפוש אינן מתורגמות/מסוננות אוטומטית, אז כדאי לבדוק כל משרה לפני הוספה. הרשימה עצמה נשמרת ב-Firebase; קישורים חיצוניים עלולים לפוג עם הזמן.
           </div>
         </div>
       );
