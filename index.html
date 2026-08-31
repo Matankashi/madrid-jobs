@@ -514,22 +514,29 @@
         setSearching(true);
         setSearchError('');
         setSearchResults(null);
-        try{
-          const perCategory = await Promise.all(CATS.map(async c => {
+        const byCat = {};
+        let anyOk = false;
+        for(const c of CATS){
+          try{
             const url = `${PROXY_URL}/search?what=${encodeURIComponent(c.query)}&where=Madrid`;
             const res = await fetch(url);
-            if(!res.ok) throw new Error('search_failed');
             const data = await res.json();
-            return { key: c.key, jobs: (data.results || []).slice(0, 6) };
-          }));
-          const byCat = {};
-          perCategory.forEach(p => { byCat[p.key] = p.jobs; });
-          setSearchResults(byCat);
-        } catch(err){
-          setSearchError('החיפוש נכשל. נסו שוב בעוד רגע.');
-        } finally {
-          setSearching(false);
+            if(res.ok){
+              byCat[c.key] = (data.results || []).slice(0, 6);
+              anyOk = true;
+            } else {
+              byCat[c.key] = [];
+            }
+          } catch(err){
+            byCat[c.key] = [];
+          }
         }
+        if(anyOk){
+          setSearchResults(byCat);
+        } else {
+          setSearchError('החיפוש נכשל. נסו שוב בעוד רגע.');
+        }
+        setSearching(false);
       }
 
       function addFoundJob(catKey, job){
