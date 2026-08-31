@@ -403,7 +403,6 @@
   <script type="text/babel">
     const { useState, useEffect } = React;
     const db = firebase.database();
-    const ROOT = "";
     const PROXY_URL = "https://madrid-jobs-proxy.matankashi.workers.dev";
 
     const CATS = [
@@ -474,7 +473,7 @@
       const [addingKey, setAddingKey] = useState(null);
 
       useEffect(() => {
-        const ref = db.ref(ROOT);
+        const ref = db.ref();
         const cb = snap => {
           const val = snap.val() || {};
           setMeta(val.meta || null);
@@ -485,7 +484,7 @@
       }, []);
 
       function touchUpdated(){
-        db.ref(`${ROOT}/meta/lastUpdated`).set(new Date().toISOString());
+        db.ref('meta/lastUpdated').set(new Date().toISOString());
       }
 
       function addJob(e){
@@ -493,7 +492,7 @@
         if(!form.title.trim() || !form.company.trim() || !form.link.trim()) return;
         setSaving(true);
         const chips = form.chipsText.split(',').map(s => s.trim()).filter(Boolean);
-        db.ref(`${ROOT}/listings`).push({
+        db.ref('listings').push({
           category: form.category,
           title: form.title.trim(),
           company: form.company.trim(),
@@ -508,7 +507,7 @@
 
       function removeJob(id){
         if(!window.confirm('להסיר את המשרה הזו מהרשימה?')) return;
-        db.ref(`${ROOT}/listings/${id}`).remove().then(touchUpdated);
+        db.ref('listings/' + id).remove().then(touchUpdated);
       }
 
       async function runSearch(){
@@ -538,7 +537,7 @@
         setAddingKey(jobKey);
         const chips = [];
         if(job.salary_min) chips.push(`שכר: ${Math.round(job.salary_min).toLocaleString()}–${Math.round(job.salary_max || job.salary_min).toLocaleString()}€`);
-        db.ref(`${ROOT}/listings`).push({
+        db.ref('listings').push({
           category: catKey,
           title: job.title || '',
           company: job.company || '',
